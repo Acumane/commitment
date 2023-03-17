@@ -1,1 +1,4 @@
 .hist
+build/
+dist/
+*.spec

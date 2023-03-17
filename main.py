@@ -9,18 +9,16 @@ console = Console()
 owner = repo = user = ""; days = "0"
 done = False
 
-
 console.print("[bold] :clipboard: Commitment [/]", justify="center")
-console.print("[strike] [/]"*console.width)
-
-if path.exists(".hist"):
-    with open(".hist", 'r') as hist:
-        saved = hist.read().split()
-        console.print(f"Press enter to use a previous entry   [ {' | '.join(saved)} ]\n", style="#808080", highlight=False)
-        owner, repo, user, days = saved
-
 
 while(not done):
+    console.print("[strike] [/]" * console.width)
+    if path.exists(".hist") and path.getsize(".hist"): 
+        with open(".hist", 'r') as hist:
+            saved = hist.read().split()
+            console.print(f"Press enter to use a previous entry   [ {' | '.join(saved)} ]\n", style="#808080", highlight=False)
+            owner, repo, user, days = saved
+
     owner = console.input("Repo owner or org name: [red]") or owner
     repo = console.input("Repo name: [red]") or repo
     user = console.input("[default not bold]Your Git(Hub) username:[/] ") or user
@@ -54,20 +52,23 @@ while(not done):
     days_ago = 0 if days == '*' else int(days)
     cutoff = Date.utcnow() - Time.timedelta(days=days_ago)
     for c in response:
-        if c["author"]["login"] == user:
+        author = c["author"]
+        if author and author["login"] == user:
             date = c["commit"]["author"]["date"]
             date = Date.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
             if not days_ago or (date >= cutoff):
                 commits.append(c["html_url"])
 
     qualify = f" in the past {str(days_ago) + ' days' if days_ago > 1 else 'day'}"
-    if not commits:
+    if commits:
+        print(f"{user} made {len(commits)} commit{'s' if len(commits) > 1 else ''} to {owner}/{repo}{qualify if days_ago else ''}:")
+        for c in commits:
+            print(f"[link]{c}[/link]")
+    else:
         print(f"{user} hasn't commited to {owner}/{repo}{qualify if days_ago else ''}.")
-        break
-    print(f"{user} made {len(commits)} commit{'s' if len(commits) > 1 else ''} to {owner}/{repo}{qualify if days_ago else ''}:")
-    for c in commits:
-        print(f"[link]{c}[/link]")
-    print("\n")
-    break
+
+    choice = console.input("\n\nRun again? [#808080](Y/n)[/]: ").upper()
+    print()
+    if choice == "N" or choice == "NO": break
 
 
