@@ -19,9 +19,9 @@ while(not done):
             console.print(f"Press enter to use a previous entry   [ {' | '.join(saved)} ]\n", style="#808080", highlight=False)
             owner, repo, branch, user, days = saved
 
-    owner = console.input("Repo owner or org name: [red]") or owner
-    repo = console.input("Repo name: [red]") or repo
-    branch = console.input("Which branches? [red]") or branch
+    owner = console.input("Repo owner or org name: ") or owner
+    repo = console.input("Repo name: ") or repo
+    branch = console.input("Which branches? ") or branch
     user = console.input("[default not bold]Git(Hub) username:[/] ") or user
     days = console.input("Commits up to [bold cyan]x[/] days ago [#808080](* for all)[/]: ") or days
 
@@ -36,11 +36,12 @@ while(not done):
     url =  f"https://api.github.com/repos/{owner}/{repo}/branches?per_page=100"
     response = get(url).json()
 
+
     if "message" in response:
         if response["message"] == "Not Found":
             console.print("\n:exclamation: Repo is either private or nonexistant! Retry:\n", style="red")
             continue
-        if response["message"].contains("API rate limit exceeded"):
+        if "API rate limit exceeded" in response["message"]:
             console.print("\n:exclamation: GitHub API rate limit exceeded!\n", style="red")
             continue
 
@@ -56,19 +57,18 @@ while(not done):
             self.name = n
             self.commits = c
 
-    def get_commits(name, link):
+    def get_commits(name, pages):
         commits = []   
-        response = get(link).json()
         cutoff = Date.utcnow() - Time.timedelta(days=days_ago)
-        
-        for c in response:
-            author, c_url= c["author"], c["html_url"]
-            if author and author["login"] == user:
-                date = c["commit"]["author"]["date"]
-                date = Date.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
-                if not days_ago or (date >= cutoff):
-                    if c_url not in all_commits:
-                        commits.append(c["html_url"])
+        for page in pages:
+            for c in page:
+                author, c_url= c["author"], c["html_url"]
+                if author and author["login"] == user:
+                    date = c["commit"]["author"]["date"]
+                    date = Date.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
+                    if not days_ago or (date >= cutoff):
+                        if c_url not in all_commits:
+                            commits.append(c["html_url"])
 
         all_commits.update(commits)
         branches.append(Branch(name, commits))
@@ -77,20 +77,26 @@ while(not done):
     default = get(url).json()["default_branch"]
 
     branch_list = branch.split(", ")
-    branches, links, all_commits = [], {}, set()
+    branches, branch_URLs, all_commits = [], [], set()
     days_ago = 0 if days == '*' else int(days)
     for branch in response:
+        num, pages = 1, []
         name = branch["name"]
         if name not in branch_list: continue
         sha = branch["commit"]["sha"]
-        url = f"https://api.github.com/repos/{owner}/{repo}/commits?per_page=100&sha={sha}"
-        links[name] = url
+        url = f"https://api.github.com/repos/{owner}/{repo}/commits?per_page=100&page={num}&sha={sha}"
+        page = get(url).json()
+        while page:
+            pages.append(page); num += 1
+            url = f"https://api.github.com/repos/{owner}/{repo}/commits?per_page=100&page={num}&sha={sha}"
+            page = get(url).json()
+        if name == default:
+            get_commits(name, pages)
+        else:
+            branch_URLs.append(Branch(name, pages))
 
-    get_commits(default, links[default])
-
-    for l in links.items():
-        if l[0] != default:
-            get_commits(l[0], l[1])
+    for B in branch_URLs:
+        get_commits(B.name, B.commits)
 
     qualify = f" in the past {str(days_ago) + ' days' if days_ago > 1 else 'day'}"
     if len(all_commits):
